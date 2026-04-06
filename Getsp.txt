@@ -1,0 +1,296 @@
+CREATE OR REPLACE PROCEDURE EVOLVE.SP_GET_CASE_TRACKING_EMPLOYER
+(
+    P_CASE_ID        IN  EVOLVE.CASE_CLAIMS.CASE_ID%TYPE,
+    P_OUTPUT_CURSOR  OUT SYS_REFCURSOR
+)
+AS
+BEGIN
+    OPEN P_OUTPUT_CURSOR FOR
+        WITH BASE_LOG AS
+        (
+            SELECT
+                L.CASE_CLAIM_LOG_ID,
+                L.CASE_CLAIM_ID,
+                L.CASE_ID,
+                NVL(L.MODIFIED_DATE, L.CREATED_DATE) AS EVENT_DATE,
+                NVL(L.MODIFIED_BY,  L.CREATED_BY)    AS EVENT_USER,
+
+                L.EMPR_NAME,
+                L.EMPR_INFO_CD,
+                L.EMPR_TIN,
+                L.GROUP_SIZE,
+                L.EMPR_ADDR1,
+                L.EMPR_ADDR2,
+                L.EMPR_CITY,
+                L.EMPR_STATE,
+                L.EMPR_ZIP,
+                L.EMPR_PHONE_NUMBER,
+                L.EMPR_FAX,
+                L.EMPR_EMAIL,
+                L.EMPLOYER_PREFERRED_DELIVERY,
+
+                LAG(L.EMPR_NAME) OVER
+                (
+                    PARTITION BY L.CASE_CLAIM_ID
+                    ORDER BY NVL(L.MODIFIED_DATE, L.CREATED_DATE), L.CASE_CLAIM_LOG_ID
+                ) AS PREV_EMPR_NAME,
+
+                LAG(L.EMPR_INFO_CD) OVER
+                (
+                    PARTITION BY L.CASE_CLAIM_ID
+                    ORDER BY NVL(L.MODIFIED_DATE, L.CREATED_DATE), L.CASE_CLAIM_LOG_ID
+                ) AS PREV_EMPR_INFO_CD,
+
+                LAG(L.EMPR_TIN) OVER
+                (
+                    PARTITION BY L.CASE_CLAIM_ID
+                    ORDER BY NVL(L.MODIFIED_DATE, L.CREATED_DATE), L.CASE_CLAIM_LOG_ID
+                ) AS PREV_EMPR_TIN,
+
+                LAG(L.GROUP_SIZE) OVER
+                (
+                    PARTITION BY L.CASE_CLAIM_ID
+                    ORDER BY NVL(L.MODIFIED_DATE, L.CREATED_DATE), L.CASE_CLAIM_LOG_ID
+                ) AS PREV_GROUP_SIZE,
+
+                LAG(L.EMPR_ADDR1) OVER
+                (
+                    PARTITION BY L.CASE_CLAIM_ID
+                    ORDER BY NVL(L.MODIFIED_DATE, L.CREATED_DATE), L.CASE_CLAIM_LOG_ID
+                ) AS PREV_EMPR_ADDR1,
+
+                LAG(L.EMPR_ADDR2) OVER
+                (
+                    PARTITION BY L.CASE_CLAIM_ID
+                    ORDER BY NVL(L.MODIFIED_DATE, L.CREATED_DATE), L.CASE_CLAIM_LOG_ID
+                ) AS PREV_EMPR_ADDR2,
+
+                LAG(L.EMPR_CITY) OVER
+                (
+                    PARTITION BY L.CASE_CLAIM_ID
+                    ORDER BY NVL(L.MODIFIED_DATE, L.CREATED_DATE), L.CASE_CLAIM_LOG_ID
+                ) AS PREV_EMPR_CITY,
+
+                LAG(L.EMPR_STATE) OVER
+                (
+                    PARTITION BY L.CASE_CLAIM_ID
+                    ORDER BY NVL(L.MODIFIED_DATE, L.CREATED_DATE), L.CASE_CLAIM_LOG_ID
+                ) AS PREV_EMPR_STATE,
+
+                LAG(L.EMPR_ZIP) OVER
+                (
+                    PARTITION BY L.CASE_CLAIM_ID
+                    ORDER BY NVL(L.MODIFIED_DATE, L.CREATED_DATE), L.CASE_CLAIM_LOG_ID
+                ) AS PREV_EMPR_ZIP,
+
+                LAG(L.EMPR_PHONE_NUMBER) OVER
+                (
+                    PARTITION BY L.CASE_CLAIM_ID
+                    ORDER BY NVL(L.MODIFIED_DATE, L.CREATED_DATE), L.CASE_CLAIM_LOG_ID
+                ) AS PREV_EMPR_PHONE_NUMBER,
+
+                LAG(L.EMPR_FAX) OVER
+                (
+                    PARTITION BY L.CASE_CLAIM_ID
+                    ORDER BY NVL(L.MODIFIED_DATE, L.CREATED_DATE), L.CASE_CLAIM_LOG_ID
+                ) AS PREV_EMPR_FAX,
+
+                LAG(L.EMPR_EMAIL) OVER
+                (
+                    PARTITION BY L.CASE_CLAIM_ID
+                    ORDER BY NVL(L.MODIFIED_DATE, L.CREATED_DATE), L.CASE_CLAIM_LOG_ID
+                ) AS PREV_EMPR_EMAIL,
+
+                LAG(L.EMPLOYER_PREFERRED_DELIVERY) OVER
+                (
+                    PARTITION BY L.CASE_CLAIM_ID
+                    ORDER BY NVL(L.MODIFIED_DATE, L.CREATED_DATE), L.CASE_CLAIM_LOG_ID
+                ) AS PREV_EMPLOYER_PREFERRED_DELIVERY
+            FROM EVOLVE.CASE_CLAIMS_LOG L
+            WHERE L.CASE_ID = P_CASE_ID
+        ),
+
+        EMPLOYER_ADDED AS
+        (
+            SELECT
+                EVENT_DATE,
+                EVENT_USER,
+                CASE_CLAIM_ID,
+                'Employer added' AS CHANGE_MADE,
+                EMPR_NAME        AS DETAILS
+            FROM BASE_LOG
+            WHERE PREV_EMPR_NAME IS NULL
+              AND EMPR_NAME IS NOT NULL
+        ),
+
+        EMPLOYER_REMOVED AS
+        (
+            SELECT
+                EVENT_DATE,
+                EVENT_USER,
+                CASE_CLAIM_ID,
+                'Employer removed' AS CHANGE_MADE,
+                PREV_EMPR_NAME     AS DETAILS
+            FROM BASE_LOG
+            WHERE PREV_EMPR_NAME IS NOT NULL
+              AND EMPR_NAME IS NULL
+        ),
+
+        EMPLOYER_UPDATED AS
+        (
+            SELECT EVENT_DATE, EVENT_USER, CASE_CLAIM_ID,
+                   'Employer updated' AS CHANGE_MADE,
+                   'Employer Name updated: ' || PREV_EMPR_NAME || ' → ' || EMPR_NAME AS DETAILS
+            FROM BASE_LOG
+            WHERE PREV_EMPR_NAME IS NOT NULL
+              AND EMPR_NAME IS NOT NULL
+              AND PREV_EMPR_NAME <> EMPR_NAME
+
+            UNION ALL
+
+            SELECT EVENT_DATE, EVENT_USER, CASE_CLAIM_ID,
+                   'Employer updated',
+                   'Employer Code updated: ' || PREV_EMPR_INFO_CD || ' → ' || EMPR_INFO_CD
+            FROM BASE_LOG
+            WHERE PREV_EMPR_INFO_CD IS NOT NULL
+              AND EMPR_INFO_CD IS NOT NULL
+              AND PREV_EMPR_INFO_CD <> EMPR_INFO_CD
+
+            UNION ALL
+
+            SELECT EVENT_DATE, EVENT_USER, CASE_CLAIM_ID,
+                   'Employer updated',
+                   'Employer Tax ID updated: ' || PREV_EMPR_TIN || ' → ' || EMPR_TIN
+            FROM BASE_LOG
+            WHERE PREV_EMPR_TIN IS NOT NULL
+              AND EMPR_TIN IS NOT NULL
+              AND PREV_EMPR_TIN <> EMPR_TIN
+
+            UNION ALL
+
+            SELECT EVENT_DATE, EVENT_USER, CASE_CLAIM_ID,
+                   'Employer updated',
+                   'Employer Group Size updated: ' || TO_CHAR(PREV_GROUP_SIZE) || ' → ' || TO_CHAR(GROUP_SIZE)
+            FROM BASE_LOG
+            WHERE PREV_GROUP_SIZE IS NOT NULL
+              AND GROUP_SIZE IS NOT NULL
+              AND PREV_GROUP_SIZE <> GROUP_SIZE
+
+            UNION ALL
+
+            SELECT EVENT_DATE, EVENT_USER, CASE_CLAIM_ID,
+                   'Employer updated',
+                   'Address Line 1 updated: ' || PREV_EMPR_ADDR1 || ' → ' || EMPR_ADDR1
+            FROM BASE_LOG
+            WHERE PREV_EMPR_ADDR1 IS NOT NULL
+              AND EMPR_ADDR1 IS NOT NULL
+              AND PREV_EMPR_ADDR1 <> EMPR_ADDR1
+
+            UNION ALL
+
+            SELECT EVENT_DATE, EVENT_USER, CASE_CLAIM_ID,
+                   'Employer updated',
+                   'Suite Address updated: ' || PREV_EMPR_ADDR2 || ' → ' || EMPR_ADDR2
+            FROM BASE_LOG
+            WHERE PREV_EMPR_ADDR2 IS NOT NULL
+              AND EMPR_ADDR2 IS NOT NULL
+              AND PREV_EMPR_ADDR2 <> EMPR_ADDR2
+
+            UNION ALL
+
+            SELECT EVENT_DATE, EVENT_USER, CASE_CLAIM_ID,
+                   'Employer updated',
+                   'City updated: ' || PREV_EMPR_CITY || ' → ' || EMPR_CITY
+            FROM BASE_LOG
+            WHERE PREV_EMPR_CITY IS NOT NULL
+              AND EMPR_CITY IS NOT NULL
+              AND PREV_EMPR_CITY <> EMPR_CITY
+
+            UNION ALL
+
+            SELECT EVENT_DATE, EVENT_USER, CASE_CLAIM_ID,
+                   'Employer updated',
+                   'State updated: ' || PREV_EMPR_STATE || ' → ' || EMPR_STATE
+            FROM BASE_LOG
+            WHERE PREV_EMPR_STATE IS NOT NULL
+              AND EMPR_STATE IS NOT NULL
+              AND PREV_EMPR_STATE <> EMPR_STATE
+
+            UNION ALL
+
+            SELECT EVENT_DATE, EVENT_USER, CASE_CLAIM_ID,
+                   'Employer updated',
+                   'Zip updated: ' || PREV_EMPR_ZIP || ' → ' || EMPR_ZIP
+            FROM BASE_LOG
+            WHERE PREV_EMPR_ZIP IS NOT NULL
+              AND EMPR_ZIP IS NOT NULL
+              AND PREV_EMPR_ZIP <> EMPR_ZIP
+
+            UNION ALL
+
+            SELECT EVENT_DATE, EVENT_USER, CASE_CLAIM_ID,
+                   'Employer updated',
+                   'Phone Number updated: ' || PREV_EMPR_PHONE_NUMBER || ' → ' || EMPR_PHONE_NUMBER
+            FROM BASE_LOG
+            WHERE PREV_EMPR_PHONE_NUMBER IS NOT NULL
+              AND EMPR_PHONE_NUMBER IS NOT NULL
+              AND PREV_EMPR_PHONE_NUMBER <> EMPR_PHONE_NUMBER
+
+            UNION ALL
+
+            SELECT EVENT_DATE, EVENT_USER, CASE_CLAIM_ID,
+                   'Employer updated',
+                   'Fax updated: ' || PREV_EMPR_FAX || ' → ' || EMPR_FAX
+            FROM BASE_LOG
+            WHERE PREV_EMPR_FAX IS NOT NULL
+              AND EMPR_FAX IS NOT NULL
+              AND PREV_EMPR_FAX <> EMPR_FAX
+
+            UNION ALL
+
+            SELECT EVENT_DATE, EVENT_USER, CASE_CLAIM_ID,
+                   'Employer updated',
+                   'Email updated: ' || PREV_EMPR_EMAIL || ' → ' || EMPR_EMAIL
+            FROM BASE_LOG
+            WHERE PREV_EMPR_EMAIL IS NOT NULL
+              AND EMPR_EMAIL IS NOT NULL
+              AND PREV_EMPR_EMAIL <> EMPR_EMAIL
+
+            UNION ALL
+
+            SELECT EVENT_DATE, EVENT_USER, CASE_CLAIM_ID,
+                   'Employer updated',
+                   'Communication Preference updated: ' || PREV_EMPLOYER_PREFERRED_DELIVERY || ' → ' || EMPLOYER_PREFERRED_DELIVERY
+            FROM BASE_LOG
+            WHERE PREV_EMPLOYER_PREFERRED_DELIVERY IS NOT NULL
+              AND EMPLOYER_PREFERRED_DELIVERY IS NOT NULL
+              AND PREV_EMPLOYER_PREFERRED_DELIVERY <> EMPLOYER_PREFERRED_DELIVERY
+        ),
+
+        ALL_EMPLOYER_EVENTS AS
+        (
+            SELECT * FROM EMPLOYER_ADDED
+            UNION ALL
+            SELECT * FROM EMPLOYER_REMOVED
+            UNION ALL
+            SELECT * FROM EMPLOYER_UPDATED
+        )
+
+        SELECT
+            EVENT_DATE,
+            CHANGE_MADE,
+            'Employer' AS CONTAINER,
+            EVENT_USER AS USER_NAME,
+            CASE
+                WHEN COUNT(DISTINCT CASE_CLAIM_ID) > 1 THEN DETAILS || ' (' || COUNT(DISTINCT CASE_CLAIM_ID) || ' claims)'
+                ELSE DETAILS
+            END AS DETAILS
+        FROM ALL_EMPLOYER_EVENTS
+        GROUP BY
+            EVENT_DATE,
+            CHANGE_MADE,
+            EVENT_USER,
+            DETAILS
+        ORDER BY EVENT_DATE DESC;
+END;
+/
