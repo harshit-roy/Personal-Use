@@ -24,19 +24,19 @@ BEGIN
                 NVL(L.MODIFIED_DATE, L.CREATED_DATE) AS EVENT_DATE,
                 NVL(L.MODIFIED_BY,  L.CREATED_BY)    AS EVENT_USER,
 
-                TO_CHAR(L.EMPR_NAME)                         AS EMPR_NAME,
-                TO_CHAR(L.EMPR_INFO_CD)                      AS EMPR_INFO_CD,
-                TO_CHAR(L.EMPR_TIN)                          AS EMPR_TIN,
-                TO_CHAR(L.GROUP_SIZE)                        AS GROUP_SIZE,
-                TO_CHAR(L.EMPR_ADDR1)                        AS EMPR_ADDR1,
-                TO_CHAR(L.EMPR_ADDR2)                        AS EMPR_ADDR2,
-                TO_CHAR(L.EMPR_CITY)                         AS EMPR_CITY,
-                TO_CHAR(L.EMPR_STATE)                        AS EMPR_STATE,
-                TO_CHAR(L.EMPR_ZIP)                          AS EMPR_ZIP,
-                TO_CHAR(L.EMPR_PHONE_NUMBER)                 AS EMPR_PHONE_NUMBER,
-                TO_CHAR(L.EMPR_FAX)                          AS EMPR_FAX,
-                TO_CHAR(L.EMPR_EMAIL)                        AS EMPR_EMAIL,
-                TO_CHAR(L.EMPLOYER_PREFERRED_DELIVERY)       AS EMPLOYER_PREFERRED_DELIVERY,
+                TO_CHAR(L.EMPR_NAME)                   AS EMPR_NAME,
+                TO_CHAR(L.EMPR_INFO_CD)                AS EMPR_INFO_CD,
+                TO_CHAR(L.EMPR_TIN)                    AS EMPR_TIN,
+                TO_CHAR(L.GROUP_SIZE)                  AS GROUP_SIZE,
+                TO_CHAR(L.EMPR_ADDR1)                  AS EMPR_ADDR1,
+                TO_CHAR(L.EMPR_ADDR2)                  AS EMPR_ADDR2,
+                TO_CHAR(L.EMPR_CITY)                   AS EMPR_CITY,
+                TO_CHAR(L.EMPR_STATE)                  AS EMPR_STATE,
+                TO_CHAR(L.EMPR_ZIP)                    AS EMPR_ZIP,
+                TO_CHAR(L.EMPR_PHONE_NUMBER)           AS EMPR_PHONE_NUMBER,
+                TO_CHAR(L.EMPR_FAX)                    AS EMPR_FAX,
+                TO_CHAR(L.EMPR_EMAIL)                  AS EMPR_EMAIL,
+                TO_CHAR(L.EMPLOYER_PREFERRED_DELIVERY) AS EMPLOYER_PREFERRED_DELIVERY,
 
                 LAG(TO_CHAR(L.EMPR_NAME)) OVER
                 (
@@ -163,9 +163,12 @@ BEGIN
                 ----------------
                 One row per changed field.
             */
-            SELECT EVENT_DATE, EVENT_USER, CASE_CLAIM_ID,
-                   'Employer updated' AS CHANGE_MADE,
-                   'Employer Name updated: ' || PREV_EMPR_NAME || ' → ' || EMPR_NAME AS DETAILS
+            SELECT
+                EVENT_DATE,
+                EVENT_USER,
+                CASE_CLAIM_ID,
+                'Employer updated' AS CHANGE_MADE,
+                'Employer Name updated: ' || PREV_EMPR_NAME || ' → ' || EMPR_NAME AS DETAILS
             FROM BASE_LOG
             WHERE PREV_EMPR_NAME IS NOT NULL
               AND EMPR_NAME IS NOT NULL
@@ -173,9 +176,12 @@ BEGIN
 
             UNION ALL
 
-            SELECT EVENT_DATE, EVENT_USER, CASE_CLAIM_ID,
-                   'Employer updated',
-                   'Employer Code updated: ' || PREV_EMPR_INFO_CD || ' → ' || EMPR_INFO_CD
+            SELECT
+                EVENT_DATE,
+                EVENT_USER,
+                CASE_CLAIM_ID,
+                'Employer updated',
+                'Employer Code updated: ' || PREV_EMPR_INFO_CD || ' → ' || EMPR_INFO_CD
             FROM BASE_LOG
             WHERE PREV_EMPR_INFO_CD IS NOT NULL
               AND EMPR_INFO_CD IS NOT NULL
@@ -183,9 +189,12 @@ BEGIN
 
             UNION ALL
 
-            SELECT EVENT_DATE, EVENT_USER, CASE_CLAIM_ID,
-                   'Employer updated',
-                   'Employer Tax ID updated: ' || PREV_EMPR_TIN || ' → ' || EMPR_TIN
+            SELECT
+                EVENT_DATE,
+                EVENT_USER,
+                CASE_CLAIM_ID,
+                'Employer updated',
+                'Employer Tax ID updated: ' || PREV_EMPR_TIN || ' → ' || EMPR_TIN
             FROM BASE_LOG
             WHERE PREV_EMPR_TIN IS NOT NULL
               AND EMPR_TIN IS NOT NULL
@@ -193,9 +202,12 @@ BEGIN
 
             UNION ALL
 
-            SELECT EVENT_DATE, EVENT_USER, CASE_CLAIM_ID,
-                   'Employer updated',
-                   'Employer Group Size updated: ' || PREV_GROUP_SIZE || ' → ' || GROUP_SIZE
+            SELECT
+                EVENT_DATE,
+                EVENT_USER,
+                CASE_CLAIM_ID,
+                'Employer updated',
+                'Employer Group Size updated: ' || PREV_GROUP_SIZE || ' → ' || GROUP_SIZE
             FROM BASE_LOG
             WHERE PREV_GROUP_SIZE IS NOT NULL
               AND GROUP_SIZE IS NOT NULL
@@ -203,9 +215,12 @@ BEGIN
 
             UNION ALL
 
-            SELECT EVENT_DATE, EVENT_USER, CASE_CLAIM_ID,
-                   'Employer updated',
-                   'Address Line 1 updated: ' || PREV_EMPR_ADDR1 || ' → ' || EMPR_ADDR1
+            SELECT
+                EVENT_DATE,
+                EVENT_USER,
+                CASE_CLAIM_ID,
+                'Employer updated',
+                'Address Line 1 updated: ' || PREV_EMPR_ADDR1 || ' → ' || EMPR_ADDR1
             FROM BASE_LOG
             WHERE PREV_EMPR_ADDR1 IS NOT NULL
               AND EMPR_ADDR1 IS NOT NULL
@@ -213,9 +228,12 @@ BEGIN
 
             UNION ALL
 
-            SELECT EVENT_DATE, EVENT_USER, CASE_CLAIM_ID,
-                   'Employer updated',
-                   'Suite Address updated: ' || PREV_EMPR_ADDR2 || ' → ' || EMPR_ADDR2
+            SELECT
+                EVENT_DATE,
+                EVENT_USER,
+                CASE_CLAIM_ID,
+                'Employer updated',
+                'Suite Address updated: ' || PREV_EMPR_ADDR2 || ' → ' || EMPR_ADDR2
             FROM BASE_LOG
             WHERE PREV_EMPR_ADDR2 IS NOT NULL
               AND EMPR_ADDR2 IS NOT NULL
@@ -223,9 +241,12 @@ BEGIN
 
             UNION ALL
 
-            SELECT EVENT_DATE, EVENT_USER, CASE_CLAIM_ID,
-                   'Employer updated',
-                   'City updated: ' || PREV_EMPR_CITY || ' → ' || EMPR_CITY
+            SELECT
+                EVENT_DATE,
+                EVENT_USER,
+                CASE_CLAIM_ID,
+                'Employer updated',
+                'City updated: ' || PREV_EMPR_CITY || ' → ' || EMPR_CITY
             FROM BASE_LOG
             WHERE PREV_EMPR_CITY IS NOT NULL
               AND EMPR_CITY IS NOT NULL
@@ -233,9 +254,12 @@ BEGIN
 
             UNION ALL
 
-            SELECT EVENT_DATE, EVENT_USER, CASE_CLAIM_ID,
-                   'Employer updated',
-                   'State updated: ' || PREV_EMPR_STATE || ' → ' || EMPR_STATE
+            SELECT
+                EVENT_DATE,
+                EVENT_USER,
+                CASE_CLAIM_ID,
+                'Employer updated',
+                'State updated: ' || PREV_EMPR_STATE || ' → ' || EMPR_STATE
             FROM BASE_LOG
             WHERE PREV_EMPR_STATE IS NOT NULL
               AND EMPR_STATE IS NOT NULL
@@ -243,9 +267,12 @@ BEGIN
 
             UNION ALL
 
-            SELECT EVENT_DATE, EVENT_USER, CASE_CLAIM_ID,
-                   'Employer updated',
-                   'Zip updated: ' || PREV_EMPR_ZIP || ' → ' || EMPR_ZIP
+            SELECT
+                EVENT_DATE,
+                EVENT_USER,
+                CASE_CLAIM_ID,
+                'Employer updated',
+                'Zip updated: ' || PREV_EMPR_ZIP || ' → ' || EMPR_ZIP
             FROM BASE_LOG
             WHERE PREV_EMPR_ZIP IS NOT NULL
               AND EMPR_ZIP IS NOT NULL
@@ -253,9 +280,12 @@ BEGIN
 
             UNION ALL
 
-            SELECT EVENT_DATE, EVENT_USER, CASE_CLAIM_ID,
-                   'Employer updated',
-                   'Phone Number updated: ' || PREV_EMPR_PHONE_NUMBER || ' → ' || EMPR_PHONE_NUMBER
+            SELECT
+                EVENT_DATE,
+                EVENT_USER,
+                CASE_CLAIM_ID,
+                'Employer updated',
+                'Phone Number updated: ' || PREV_EMPR_PHONE_NUMBER || ' → ' || EMPR_PHONE_NUMBER
             FROM BASE_LOG
             WHERE PREV_EMPR_PHONE_NUMBER IS NOT NULL
               AND EMPR_PHONE_NUMBER IS NOT NULL
@@ -263,9 +293,12 @@ BEGIN
 
             UNION ALL
 
-            SELECT EVENT_DATE, EVENT_USER, CASE_CLAIM_ID,
-                   'Employer updated',
-                   'Fax updated: ' || PREV_EMPR_FAX || ' → ' || EMPR_FAX
+            SELECT
+                EVENT_DATE,
+                EVENT_USER,
+                CASE_CLAIM_ID,
+                'Employer updated',
+                'Fax updated: ' || PREV_EMPR_FAX || ' → ' || EMPR_FAX
             FROM BASE_LOG
             WHERE PREV_EMPR_FAX IS NOT NULL
               AND EMPR_FAX IS NOT NULL
@@ -273,9 +306,12 @@ BEGIN
 
             UNION ALL
 
-            SELECT EVENT_DATE, EVENT_USER, CASE_CLAIM_ID,
-                   'Employer updated',
-                   'Email updated: ' || PREV_EMPR_EMAIL || ' → ' || EMPR_EMAIL
+            SELECT
+                EVENT_DATE,
+                EVENT_USER,
+                CASE_CLAIM_ID,
+                'Employer updated',
+                'Email updated: ' || PREV_EMPR_EMAIL || ' → ' || EMPR_EMAIL
             FROM BASE_LOG
             WHERE PREV_EMPR_EMAIL IS NOT NULL
               AND EMPR_EMAIL IS NOT NULL
@@ -283,9 +319,12 @@ BEGIN
 
             UNION ALL
 
-            SELECT EVENT_DATE, EVENT_USER, CASE_CLAIM_ID,
-                   'Employer updated',
-                   'Communication Preference updated: ' || PREV_EMPLOYER_PREFERRED_DELIVERY || ' → ' || EMPLOYER_PREFERRED_DELIVERY
+            SELECT
+                EVENT_DATE,
+                EVENT_USER,
+                CASE_CLAIM_ID,
+                'Employer updated',
+                'Communication Preference updated: ' || PREV_EMPLOYER_PREFERRED_DELIVERY || ' → ' || EMPLOYER_PREFERRED_DELIVERY
             FROM BASE_LOG
             WHERE PREV_EMPLOYER_PREFERRED_DELIVERY IS NOT NULL
               AND EMPLOYER_PREFERRED_DELIVERY IS NOT NULL
@@ -304,28 +343,19 @@ BEGIN
             SELECT * FROM EMPLOYER_UPDATED
         ),
 
-        GROUPED_EMPLOYER_EVENTS AS
+        DISTINCT_EMPLOYER_EVENTS AS
         (
             /*
-                If the same employer change happened across multiple claims in the same case,
-                collapse them into one row and append "(x claims)" in details.
+                Remove duplicate rows for same event.
+                Business does not need claim count in details.
             */
-            SELECT
+            SELECT DISTINCT
                 EVENT_DATE,
                 CHANGE_MADE,
                 'Employer' AS CONTAINER,
                 EVENT_USER AS USER_NAME,
-                CASE
-                    WHEN COUNT(DISTINCT CASE_CLAIM_ID) > 1
-                        THEN DETAILS || ' (' || COUNT(DISTINCT CASE_CLAIM_ID) || ' claims)'
-                    ELSE DETAILS
-                END AS DETAILS
-            FROM ALL_EMPLOYER_EVENTS
-            GROUP BY
-                EVENT_DATE,
-                CHANGE_MADE,
-                EVENT_USER,
                 DETAILS
+            FROM ALL_EMPLOYER_EVENTS
         ),
 
         PAGED_EMPLOYER_EVENTS AS
@@ -344,7 +374,7 @@ BEGIN
                 (
                     ORDER BY EVENT_DATE DESC, CHANGE_MADE, USER_NAME, DETAILS
                 ) AS RN
-            FROM GROUPED_EMPLOYER_EVENTS
+            FROM DISTINCT_EMPLOYER_EVENTS
         )
 
         /*
