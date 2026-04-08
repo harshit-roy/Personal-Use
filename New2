@@ -1,9 +1,12 @@
 CREATE OR REPLACE PROCEDURE EVOLVE.GET_CASE_HISTORY_BY_CASE_ID
 (
-    P_CASE_ID        IN  EVOLVE.CASE_CLAIMS.CASE_ID%TYPE,
-    P_PAGE_NUMBER    IN  NUMBER DEFAULT 1,
-    P_PAGE_SIZE      IN  NUMBER DEFAULT 7,
-    P_OUTPUT_CURSOR  OUT SYS_REFCURSOR
+    P_CASE_ID            IN  EVOLVE.CASE_CLAIMS.CASE_ID%TYPE,
+    P_PAGE_NUMBER        IN  NUMBER DEFAULT 1,
+    P_PAGE_SIZE          IN  NUMBER DEFAULT 7,
+    P_FILTER_DATE        IN  DATE DEFAULT NULL,
+    P_FILTER_CONTAINER   IN  VARCHAR2 DEFAULT NULL,
+    P_FILTER_USER        IN  VARCHAR2 DEFAULT NULL,
+    P_OUTPUT_CURSOR      OUT SYS_REFCURSOR
 )
 AS
 BEGIN
@@ -124,8 +127,6 @@ BEGIN
         (
             /*
                 Employer added
-                --------------
-                Previous employer name was NULL, current employer name exists.
             */
             SELECT
                 EVENT_DATE,
@@ -142,8 +143,6 @@ BEGIN
         (
             /*
                 Employer removed
-                ----------------
-                Previous employer name existed, current employer name is NULL.
             */
             SELECT
                 EVENT_DATE,
@@ -160,8 +159,7 @@ BEGIN
         (
             /*
                 Employer updated
-                ----------------
-                One row per changed field.
+                One row per changed field
             */
             SELECT
                 EVENT_DATE,
@@ -334,7 +332,7 @@ BEGIN
         ALL_EMPLOYER_EVENTS AS
         (
             /*
-                Combine all employer events into one set.
+                Combine all employer events
             */
             SELECT * FROM EMPLOYER_ADDED
             UNION ALL
@@ -346,8 +344,8 @@ BEGIN
         DISTINCT_EMPLOYER_EVENTS AS
         (
             /*
-                Remove duplicate rows for same event.
-                Business does not need claim count in details.
+                Remove duplicate rows.
+                No claim count text required as per business.
             */
             SELECT DISTINCT
                 EVENT_DATE,
@@ -358,10 +356,30 @@ BEGIN
             FROM ALL_EMPLOYER_EVENTS
         ),
 
+        FILTERED_EMPLOYER_EVENTS AS
+        (
+            /*
+                Apply filters before pagination.
+                1. Date filter ignores time using TRUNC
+                2. Container filter is case-insensitive
+                3. User filter is case-insensitive
+            */
+            SELECT
+                EVENT_DATE,
+                CHANGE_MADE,
+                CONTAINER,
+                USER_NAME,
+                DETAILS
+            FROM DISTINCT_EMPLOYER_EVENTS
+            WHERE (P_FILTER_DATE IS NULL OR TRUNC(EVENT_DATE) = TRUNC(P_FILTER_DATE))
+              AND (P_FILTER_CONTAINER IS NULL OR UPPER(CONTAINER) = UPPER(TRIM(P_FILTER_CONTAINER)))
+              AND (P_FILTER_USER IS NULL OR UPPER(USER_NAME) = UPPER(TRIM(P_FILTER_USER)))
+        ),
+
         PAGED_EMPLOYER_EVENTS AS
         (
             /*
-                Add row numbers for pagination and total record count for UI.
+                Add total records and row number after filtering.
             */
             SELECT
                 EVENT_DATE,
@@ -374,12 +392,11 @@ BEGIN
                 (
                     ORDER BY EVENT_DATE DESC, CHANGE_MADE, USER_NAME, DETAILS
                 ) AS RN
-            FROM DISTINCT_EMPLOYER_EVENTS
+            FROM FILTERED_EMPLOYER_EVENTS
         )
 
         /*
-            Final paginated result.
-            Only requested page rows are returned.
+            Final paginated result
         */
         SELECT
             EVENT_DATE,
