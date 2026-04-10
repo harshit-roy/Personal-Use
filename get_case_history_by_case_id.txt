@@ -1,0 +1,619 @@
+CREATE OR REPLACE PROCEDURE EVOLVE.GET_CASE_HISTORY_BY_CASE_ID
+(
+    P_CASE_ID           IN  EVOLVE.CASE_CLAIMS.CASE_ID%TYPE,
+    P_PAGE_NUMBER       IN  NUMBER   DEFAULT 1,
+    P_PAGE_SIZE         IN  NUMBER   DEFAULT 7,
+    P_FILTER_DATE       IN  VARCHAR2 DEFAULT NULL,
+    P_FILTER_CONTAINER  IN  VARCHAR2 DEFAULT NULL,
+    P_FILTER_USER       IN  VARCHAR2 DEFAULT NULL,
+    P_OUTPUT_CURSOR     OUT SYS_REFCURSOR
+)
+AS
+BEGIN
+    OPEN P_OUTPUT_CURSOR FOR
+        WITH
+        /*==============================================================
+          PARAMS
+          - Keep original parameter types.
+          - Parse date filter safely.
+        ==============================================================*/
+        PARAMS AS
+        (
+            SELECT
+                CASE
+                    WHEN P_FILTER_DATE IS NULL OR TRIM(P_FILTER_DATE) IS NULL THEN NULL
+                    WHEN REGEXP_LIKE(TRIM(P_FILTER_DATE), '^\d{4}-\d{2}-\d{2}$')
+                        THEN TO_DATE(TRIM(P_FILTER_DATE), 'YYYY-MM-DD')
+                    WHEN REGEXP_LIKE(UPPER(TRIM(P_FILTER_DATE)), '^\d{2}\s[A-Z]{3}\s\d{4}$')
+                        THEN TO_DATE(UPPER(TRIM(P_FILTER_DATE)), 'DD MON YYYY', 'NLS_DATE_LANGUAGE=ENGLISH')
+                    ELSE NULL
+                END AS FILTER_DATE
+            FROM DUAL
+        ),
+
+        /*==============================================================
+          EMPLOYER BASE LOG
+          Read employer history from CASE_CLAIMS_LOG.
+          LAG is used claim-wise to compare previous vs current values.
+        ==============================================================*/
+        EMP_BASE_LOG AS
+        (
+            SELECT
+                L.CASE_CLAIM_LOG_ID AS EVENT_SORT_ID,
+                L.CASE_CLAIM_ID,
+                L.CASE_ID,
+                NVL(L.MODIFIED_DATE, L.CREATED_DATE) AS EVENT_DATE,
+                NVL(L.MODIFIED_BY, L.CREATED_BY)     AS EVENT_USER,
+
+                TO_CHAR(L.EMPR_NAME)                     AS EMPR_NAME,
+                TO_CHAR(L.EMPR_INFO_CD)                  AS EMPR_INFO_CD,
+                TO_CHAR(L.EMPR_TIN)                      AS EMPR_TIN,
+                TO_CHAR(L.GROUP_SIZE)                    AS GROUP_SIZE,
+                TO_CHAR(L.EMPR_ADDR1)                    AS EMPR_ADDR1,
+                TO_CHAR(L.EMPR_ADDR2)                    AS EMPR_ADDR2,
+                TO_CHAR(L.EMPR_CITY)                     AS EMPR_CITY,
+                TO_CHAR(L.EMPR_STATE)                    AS EMPR_STATE,
+                TO_CHAR(L.EMPR_ZIP)                      AS EMPR_ZIP,
+                TO_CHAR(L.EMPR_PHONE_NUMBER)             AS EMPR_PHONE_NUMBER,
+                TO_CHAR(L.EMPR_FAX)                      AS EMPR_FAX,
+                TO_CHAR(L.EMPR_EMAIL)                    AS EMPR_EMAIL,
+                TO_CHAR(L.EMPLOYER_PREFERRED_DELIVERY)   AS EMPLOYER_PREFERRED_DELIVERY,
+
+                LAG(TO_CHAR(L.EMPR_NAME)) OVER
+                (
+                    PARTITION BY L.CASE_CLAIM_ID
+                    ORDER BY NVL(L.MODIFIED_DATE, L.CREATED_DATE), L.CASE_CLAIM_LOG_ID
+                ) AS PREV_EMPR_NAME,
+
+                LAG(TO_CHAR(L.EMPR_INFO_CD)) OVER
+                (
+                    PARTITION BY L.CASE_CLAIM_ID
+                    ORDER BY NVL(L.MODIFIED_DATE, L.CREATED_DATE), L.CASE_CLAIM_LOG_ID
+                ) AS PREV_EMPR_INFO_CD,
+
+                LAG(TO_CHAR(L.EMPR_TIN)) OVER
+                (
+                    PARTITION BY L.CASE_CLAIM_ID
+                    ORDER BY NVL(L.MODIFIED_DATE, L.CREATED_DATE), L.CASE_CLAIM_LOG_ID
+                ) AS PREV_EMPR_TIN,
+
+                LAG(TO_CHAR(L.GROUP_SIZE)) OVER
+                (
+                    PARTITION BY L.CASE_CLAIM_ID
+                    ORDER BY NVL(L.MODIFIED_DATE, L.CREATED_DATE), L.CASE_CLAIM_LOG_ID
+                ) AS PREV_GROUP_SIZE,
+
+                LAG(TO_CHAR(L.EMPR_ADDR1)) OVER
+                (
+                    PARTITION BY L.CASE_CLAIM_ID
+                    ORDER BY NVL(L.MODIFIED_DATE, L.CREATED_DATE), L.CASE_CLAIM_LOG_ID
+                ) AS PREV_EMPR_ADDR1,
+
+                LAG(TO_CHAR(L.EMPR_ADDR2)) OVER
+                (
+                    PARTITION BY L.CASE_CLAIM_ID
+                    ORDER BY NVL(L.MODIFIED_DATE, L.CREATED_DATE), L.CASE_CLAIM_LOG_ID
+                ) AS PREV_EMPR_ADDR2,
+
+                LAG(TO_CHAR(L.EMPR_CITY)) OVER
+                (
+                    PARTITION BY L.CASE_CLAIM_ID
+                    ORDER BY NVL(L.MODIFIED_DATE, L.CREATED_DATE), L.CASE_CLAIM_LOG_ID
+                ) AS PREV_EMPR_CITY,
+
+                LAG(TO_CHAR(L.EMPR_STATE)) OVER
+                (
+                    PARTITION BY L.CASE_CLAIM_ID
+                    ORDER BY NVL(L.MODIFIED_DATE, L.CREATED_DATE), L.CASE_CLAIM_LOG_ID
+                ) AS PREV_EMPR_STATE,
+
+                LAG(TO_CHAR(L.EMPR_ZIP)) OVER
+                (
+                    PARTITION BY L.CASE_CLAIM_ID
+                    ORDER BY NVL(L.MODIFIED_DATE, L.CREATED_DATE), L.CASE_CLAIM_LOG_ID
+                ) AS PREV_EMPR_ZIP,
+
+                LAG(TO_CHAR(L.EMPR_PHONE_NUMBER)) OVER
+                (
+                    PARTITION BY L.CASE_CLAIM_ID
+                    ORDER BY NVL(L.MODIFIED_DATE, L.CREATED_DATE), L.CASE_CLAIM_LOG_ID
+                ) AS PREV_EMPR_PHONE_NUMBER,
+
+                LAG(TO_CHAR(L.EMPR_FAX)) OVER
+                (
+                    PARTITION BY L.CASE_CLAIM_ID
+                    ORDER BY NVL(L.MODIFIED_DATE, L.CREATED_DATE), L.CASE_CLAIM_LOG_ID
+                ) AS PREV_EMPR_FAX,
+
+                LAG(TO_CHAR(L.EMPR_EMAIL)) OVER
+                (
+                    PARTITION BY L.CASE_CLAIM_ID
+                    ORDER BY NVL(L.MODIFIED_DATE, L.CREATED_DATE), L.CASE_CLAIM_LOG_ID
+                ) AS PREV_EMPR_EMAIL,
+
+                LAG(TO_CHAR(L.EMPLOYER_PREFERRED_DELIVERY)) OVER
+                (
+                    PARTITION BY L.CASE_CLAIM_ID
+                    ORDER BY NVL(L.MODIFIED_DATE, L.CREATED_DATE), L.CASE_CLAIM_LOG_ID
+                ) AS PREV_EMPLOYER_PREFERRED_DELIVERY
+            FROM EVOLVE.CASE_CLAIMS_LOG L
+            WHERE L.CASE_ID = P_CASE_ID
+        ),
+
+        /*==============================================================
+          EMPLOYER EVENTS
+        ==============================================================*/
+        EMPLOYER_ADDED AS
+        (
+            SELECT
+                EVENT_DATE,
+                EVENT_USER,
+                EVENT_SORT_ID,
+                'Employer'       AS CONTAINER,
+                'Employer added' AS CHANGE_MADE,
+                NVL(EMPR_NAME, 'Blank') AS DETAILS
+            FROM EMP_BASE_LOG
+            WHERE NULLIF(TRIM(PREV_EMPR_NAME), '') IS NULL
+              AND NULLIF(TRIM(EMPR_NAME), '') IS NOT NULL
+        ),
+
+        EMPLOYER_REMOVED AS
+        (
+            SELECT
+                EVENT_DATE,
+                EVENT_USER,
+                EVENT_SORT_ID,
+                'Employer'         AS CONTAINER,
+                'Employer removed' AS CHANGE_MADE,
+                NVL(PREV_EMPR_NAME, 'Blank') AS DETAILS
+            FROM EMP_BASE_LOG
+            WHERE NULLIF(TRIM(PREV_EMPR_NAME), '') IS NOT NULL
+              AND NULLIF(TRIM(EMPR_NAME), '') IS NULL
+        ),
+
+        EMPLOYER_UPDATED AS
+        (
+            SELECT EVENT_DATE, EVENT_USER, EVENT_SORT_ID, 'Employer' AS CONTAINER, 'Employer updated' AS CHANGE_MADE,
+                   'Employer Name updated: ' || NVL(PREV_EMPR_NAME, 'Blank') || ' → ' || NVL(EMPR_NAME, 'Blank') AS DETAILS
+            FROM EMP_BASE_LOG
+            WHERE NVL(TRIM(PREV_EMPR_NAME), '#NULL#') <> NVL(TRIM(EMPR_NAME), '#NULL#')
+              AND NULLIF(TRIM(PREV_EMPR_NAME), '') IS NOT NULL
+              AND NULLIF(TRIM(EMPR_NAME), '') IS NOT NULL
+
+            UNION ALL
+            SELECT EVENT_DATE, EVENT_USER, EVENT_SORT_ID, 'Employer', 'Employer updated',
+                   'Employer Code updated: ' || NVL(PREV_EMPR_INFO_CD, 'Blank') || ' → ' || NVL(EMPR_INFO_CD, 'Blank')
+            FROM EMP_BASE_LOG
+            WHERE NVL(TRIM(PREV_EMPR_INFO_CD), '#NULL#') <> NVL(TRIM(EMPR_INFO_CD), '#NULL#')
+              AND NULLIF(TRIM(PREV_EMPR_NAME), '') IS NOT NULL
+              AND NULLIF(TRIM(EMPR_NAME), '') IS NOT NULL
+
+            UNION ALL
+            SELECT EVENT_DATE, EVENT_USER, EVENT_SORT_ID, 'Employer', 'Employer updated',
+                   'Employer Tax ID updated: ' || NVL(PREV_EMPR_TIN, 'Blank') || ' → ' || NVL(EMPR_TIN, 'Blank')
+            FROM EMP_BASE_LOG
+            WHERE NVL(TRIM(PREV_EMPR_TIN), '#NULL#') <> NVL(TRIM(EMPR_TIN), '#NULL#')
+              AND NULLIF(TRIM(PREV_EMPR_NAME), '') IS NOT NULL
+              AND NULLIF(TRIM(EMPR_NAME), '') IS NOT NULL
+
+            UNION ALL
+            SELECT EVENT_DATE, EVENT_USER, EVENT_SORT_ID, 'Employer', 'Employer updated',
+                   'Employer Group Size updated: ' || NVL(PREV_GROUP_SIZE, 'Blank') || ' → ' || NVL(GROUP_SIZE, 'Blank')
+            FROM EMP_BASE_LOG
+            WHERE NVL(TRIM(PREV_GROUP_SIZE), '#NULL#') <> NVL(TRIM(GROUP_SIZE), '#NULL#')
+              AND NULLIF(TRIM(PREV_EMPR_NAME), '') IS NOT NULL
+              AND NULLIF(TRIM(EMPR_NAME), '') IS NOT NULL
+
+            UNION ALL
+            SELECT EVENT_DATE, EVENT_USER, EVENT_SORT_ID, 'Employer', 'Employer updated',
+                   'Address Line 1 updated: ' || NVL(PREV_EMPR_ADDR1, 'Blank') || ' → ' || NVL(EMPR_ADDR1, 'Blank')
+            FROM EMP_BASE_LOG
+            WHERE NVL(TRIM(PREV_EMPR_ADDR1), '#NULL#') <> NVL(TRIM(EMPR_ADDR1), '#NULL#')
+              AND NULLIF(TRIM(PREV_EMPR_NAME), '') IS NOT NULL
+              AND NULLIF(TRIM(EMPR_NAME), '') IS NOT NULL
+
+            UNION ALL
+            SELECT EVENT_DATE, EVENT_USER, EVENT_SORT_ID, 'Employer', 'Employer updated',
+                   'Suite Address updated: ' || NVL(PREV_EMPR_ADDR2, 'Blank') || ' → ' || NVL(EMPR_ADDR2, 'Blank')
+            FROM EMP_BASE_LOG
+            WHERE NVL(TRIM(PREV_EMPR_ADDR2), '#NULL#') <> NVL(TRIM(EMPR_ADDR2), '#NULL#')
+              AND NULLIF(TRIM(PREV_EMPR_NAME), '') IS NOT NULL
+              AND NULLIF(TRIM(EMPR_NAME), '') IS NOT NULL
+
+            UNION ALL
+            SELECT EVENT_DATE, EVENT_USER, EVENT_SORT_ID, 'Employer', 'Employer updated',
+                   'City updated: ' || NVL(PREV_EMPR_CITY, 'Blank') || ' → ' || NVL(EMPR_CITY, 'Blank')
+            FROM EMP_BASE_LOG
+            WHERE NVL(TRIM(PREV_EMPR_CITY), '#NULL#') <> NVL(TRIM(EMPR_CITY), '#NULL#')
+              AND NULLIF(TRIM(PREV_EMPR_NAME), '') IS NOT NULL
+              AND NULLIF(TRIM(EMPR_NAME), '') IS NOT NULL
+
+            UNION ALL
+            SELECT EVENT_DATE, EVENT_USER, EVENT_SORT_ID, 'Employer', 'Employer updated',
+                   'State updated: ' || NVL(PREV_EMPR_STATE, 'Blank') || ' → ' || NVL(EMPR_STATE, 'Blank')
+            FROM EMP_BASE_LOG
+            WHERE NVL(TRIM(PREV_EMPR_STATE), '#NULL#') <> NVL(TRIM(EMPR_STATE), '#NULL#')
+              AND NULLIF(TRIM(PREV_EMPR_NAME), '') IS NOT NULL
+              AND NULLIF(TRIM(EMPR_NAME), '') IS NOT NULL
+
+            UNION ALL
+            SELECT EVENT_DATE, EVENT_USER, EVENT_SORT_ID, 'Employer', 'Employer updated',
+                   'Zip updated: ' || NVL(PREV_EMPR_ZIP, 'Blank') || ' → ' || NVL(EMPR_ZIP, 'Blank')
+            FROM EMP_BASE_LOG
+            WHERE NVL(TRIM(PREV_EMPR_ZIP), '#NULL#') <> NVL(TRIM(EMPR_ZIP), '#NULL#')
+              AND NULLIF(TRIM(PREV_EMPR_NAME), '') IS NOT NULL
+              AND NULLIF(TRIM(EMPR_NAME), '') IS NOT NULL
+
+            UNION ALL
+            SELECT EVENT_DATE, EVENT_USER, EVENT_SORT_ID, 'Employer', 'Employer updated',
+                   'Phone Number updated: ' || NVL(PREV_EMPR_PHONE_NUMBER, 'Blank') || ' → ' || NVL(EMPR_PHONE_NUMBER, 'Blank')
+            FROM EMP_BASE_LOG
+            WHERE NVL(TRIM(PREV_EMPR_PHONE_NUMBER), '#NULL#') <> NVL(TRIM(EMPR_PHONE_NUMBER), '#NULL#')
+              AND NULLIF(TRIM(PREV_EMPR_NAME), '') IS NOT NULL
+              AND NULLIF(TRIM(EMPR_NAME), '') IS NOT NULL
+
+            UNION ALL
+            SELECT EVENT_DATE, EVENT_USER, EVENT_SORT_ID, 'Employer', 'Employer updated',
+                   'Fax updated: ' || NVL(PREV_EMPR_FAX, 'Blank') || ' → ' || NVL(EMPR_FAX, 'Blank')
+            FROM EMP_BASE_LOG
+            WHERE NVL(TRIM(PREV_EMPR_FAX), '#NULL#') <> NVL(TRIM(EMPR_FAX), '#NULL#')
+              AND NULLIF(TRIM(PREV_EMPR_NAME), '') IS NOT NULL
+              AND NULLIF(TRIM(EMPR_NAME), '') IS NOT NULL
+
+            UNION ALL
+            SELECT EVENT_DATE, EVENT_USER, EVENT_SORT_ID, 'Employer', 'Employer updated',
+                   'Email updated: ' || NVL(PREV_EMPR_EMAIL, 'Blank') || ' → ' || NVL(EMPR_EMAIL, 'Blank')
+            FROM EMP_BASE_LOG
+            WHERE NVL(TRIM(PREV_EMPR_EMAIL), '#NULL#') <> NVL(TRIM(EMPR_EMAIL), '#NULL#')
+              AND NULLIF(TRIM(PREV_EMPR_NAME), '') IS NOT NULL
+              AND NULLIF(TRIM(EMPR_NAME), '') IS NOT NULL
+
+            UNION ALL
+            SELECT EVENT_DATE, EVENT_USER, EVENT_SORT_ID, 'Employer', 'Employer updated',
+                   'Communication Preference updated: ' || NVL(PREV_EMPLOYER_PREFERRED_DELIVERY, 'Blank') || ' → ' || NVL(EMPLOYER_PREFERRED_DELIVERY, 'Blank')
+            FROM EMP_BASE_LOG
+            WHERE NVL(TRIM(PREV_EMPLOYER_PREFERRED_DELIVERY), '#NULL#') <> NVL(TRIM(EMPLOYER_PREFERRED_DELIVERY), '#NULL#')
+              AND NULLIF(TRIM(PREV_EMPR_NAME), '') IS NOT NULL
+              AND NULLIF(TRIM(EMPR_NAME), '') IS NOT NULL
+        ),
+
+        /*==============================================================
+          ATTACHMENT BASE LOG
+          Read attachment history from CASE_DOCUMENTS_LOG.
+        ==============================================================*/
+        ATT_BASE_LOG AS
+        (
+            SELECT
+                L.LOG_ID        AS EVENT_SORT_ID,
+                L.ACTION_TYPE,
+                L.ACTION_BY     AS EVENT_USER,
+                L.ACTION_DATE   AS EVENT_DATE,
+                L.DOCUMENT_ID,
+
+                L.OLD_CASE_ID,
+                L.NEW_CASE_ID,
+                L.OLD_CASE_CLAIM_ID,
+                L.NEW_CASE_CLAIM_ID,
+
+                L.OLD_DOCUMENT_NAME,
+                L.NEW_DOCUMENT_NAME,
+
+                L.OLD_DOCUMENT_DESCRIPTION,
+                L.NEW_DOCUMENT_DESCRIPTION,
+
+                L.OLD_DOCUMENT_LINK,
+                L.NEW_DOCUMENT_LINK,
+
+                L.OLD_IS_ACTIVE,
+                L.NEW_IS_ACTIVE,
+
+                L.OLD_CREATED_BY,
+                L.NEW_CREATED_BY,
+                L.OLD_CREATED_DATE,
+                L.NEW_CREATED_DATE,
+                L.OLD_MODIFIED_BY,
+                L.NEW_MODIFIED_BY,
+                L.OLD_MODIFIED_DATE,
+                L.NEW_MODIFIED_DATE,
+
+                L.OLD_DOCUMENT_VERSION,
+                L.NEW_DOCUMENT_VERSION,
+                L.OLD_DOCUMENT_CATEGORY,
+                L.NEW_DOCUMENT_CATEGORY,
+                L.OLD_EHUB_DOC_ID,
+                L.NEW_EHUB_DOC_ID,
+                L.OLD_INBOUND_EMAIL_ID,
+                L.NEW_INBOUND_EMAIL_ID,
+                L.OLD_INBOUND_VOICE_MAIL_ID,
+                L.NEW_INBOUND_VOICE_MAIL_ID,
+                L.OLD_DELIVERY_METHOD,
+                L.NEW_DELIVERY_METHOD,
+                L.OLD_EMAIL_GROUP,
+                L.NEW_EMAIL_GROUP,
+                L.OLD_EMAIL_SUBJECT,
+                L.NEW_EMAIL_SUBJECT,
+                L.OLD_EMAIL_BODY,
+                L.NEW_EMAIL_BODY,
+                L.OLD_DOCUMENT_KEY,
+                L.NEW_DOCUMENT_KEY,
+                L.OLD_DOCUMENT_TYPE,
+                L.NEW_DOCUMENT_TYPE,
+                L.OLD_IS_MAIL_SENT,
+                L.NEW_IS_MAIL_SENT,
+                L.OLD_MODIFIED_TO_ADDRESS,
+                L.NEW_MODIFIED_TO_ADDRESS,
+                L.OLD_READY_TO_SEND,
+                L.NEW_READY_TO_SEND,
+                L.OLD_ENTITY,
+                L.NEW_ENTITY
+            FROM EVOLVE.CASE_DOCUMENTS_LOG L
+            WHERE NVL(L.OLD_CASE_ID, -1) = P_CASE_ID
+               OR NVL(L.NEW_CASE_ID, -1) = P_CASE_ID
+        ),
+
+        /*==============================================================
+          ATTACHMENT EVENTS
+          - Reassignment is its own event.
+          - Update rows exclude reassignment and soft delete rows so
+            the same action does not appear twice in history.
+        ==============================================================*/
+        ATTACHMENT_ADDED AS
+        (
+            SELECT
+                EVENT_DATE,
+                EVENT_USER,
+                EVENT_SORT_ID,
+                'Attachments'      AS CONTAINER,
+                'Attachment added' AS CHANGE_MADE,
+                NVL(NEW_DOCUMENT_NAME, 'Blank') AS DETAILS
+            FROM ATT_BASE_LOG
+            WHERE ACTION_TYPE = 'I'
+              AND NVL(NEW_CASE_ID, -1) = P_CASE_ID
+        ),
+
+        ATTACHMENT_REMOVED AS
+        (
+            SELECT
+                EVENT_DATE,
+                EVENT_USER,
+                EVENT_SORT_ID,
+                'Attachments'        AS CONTAINER,
+                'Attachment removed' AS CHANGE_MADE,
+                NVL(OLD_DOCUMENT_NAME, 'Blank') AS DETAILS
+            FROM ATT_BASE_LOG
+            WHERE ACTION_TYPE = 'D'
+              AND NVL(OLD_CASE_ID, -1) = P_CASE_ID
+
+            UNION ALL
+
+            SELECT
+                EVENT_DATE,
+                EVENT_USER,
+                EVENT_SORT_ID,
+                'Attachments',
+                'Attachment removed',
+                NVL(OLD_DOCUMENT_NAME, 'Blank')
+            FROM ATT_BASE_LOG
+            WHERE ACTION_TYPE = 'U'
+              AND NVL(OLD_CASE_ID, -1) = P_CASE_ID
+              AND NVL(TRIM(OLD_IS_ACTIVE), 'N') = 'Y'
+              AND NVL(TRIM(NEW_IS_ACTIVE), 'N') = 'N'
+        ),
+
+        ATTACHMENT_REASSIGNED AS
+        (
+            SELECT
+                EVENT_DATE,
+                EVENT_USER,
+                EVENT_SORT_ID,
+                'Attachments'           AS CONTAINER,
+                'Attachment reassigned' AS CHANGE_MADE,
+                NVL(COALESCE(NEW_DOCUMENT_NAME, OLD_DOCUMENT_NAME), 'Blank') ||
+                ' | Claim reassigned: ' ||
+                NVL(TO_CHAR(OLD_CASE_CLAIM_ID), 'Blank') || ' → ' ||
+                NVL(TO_CHAR(NEW_CASE_CLAIM_ID), 'Blank') AS DETAILS
+            FROM ATT_BASE_LOG
+            WHERE ACTION_TYPE = 'U'
+              AND (
+                    NVL(OLD_CASE_ID, -1) <> NVL(NEW_CASE_ID, -1)
+                    OR NVL(OLD_CASE_CLAIM_ID, -1) <> NVL(NEW_CASE_CLAIM_ID, -1)
+                  )
+        ),
+
+        ATTACHMENT_UPDATED AS
+        (
+            SELECT EVENT_DATE, EVENT_USER, EVENT_SORT_ID, 'Attachments' AS CONTAINER, 'Attachment updated' AS CHANGE_MADE,
+                   'Name updated: ' || NVL(OLD_DOCUMENT_NAME, 'Blank') || ' → ' || NVL(NEW_DOCUMENT_NAME, 'Blank') AS DETAILS
+            FROM ATT_BASE_LOG
+            WHERE ACTION_TYPE = 'U'
+              AND NVL(TRIM(OLD_DOCUMENT_NAME), '#NULL#') <> NVL(TRIM(NEW_DOCUMENT_NAME), '#NULL#')
+              AND NVL(OLD_CASE_ID, -1) = NVL(NEW_CASE_ID, -1)
+              AND NVL(OLD_CASE_CLAIM_ID, -1) = NVL(NEW_CASE_CLAIM_ID, -1)
+              AND NOT (NVL(TRIM(OLD_IS_ACTIVE), 'N') = 'Y' AND NVL(TRIM(NEW_IS_ACTIVE), 'N') = 'N')
+
+            UNION ALL
+            SELECT EVENT_DATE, EVENT_USER, EVENT_SORT_ID, 'Attachments', 'Attachment updated',
+                   'Note updated: ' || NVL(OLD_DOCUMENT_DESCRIPTION, 'Blank') || ' → ' || NVL(NEW_DOCUMENT_DESCRIPTION, 'Blank')
+            FROM ATT_BASE_LOG
+            WHERE ACTION_TYPE = 'U'
+              AND NVL(TRIM(OLD_DOCUMENT_DESCRIPTION), '#NULL#') <> NVL(TRIM(NEW_DOCUMENT_DESCRIPTION), '#NULL#')
+              AND NVL(OLD_CASE_ID, -1) = NVL(NEW_CASE_ID, -1)
+              AND NVL(OLD_CASE_CLAIM_ID, -1) = NVL(NEW_CASE_CLAIM_ID, -1)
+              AND NOT (NVL(TRIM(OLD_IS_ACTIVE), 'N') = 'Y' AND NVL(TRIM(NEW_IS_ACTIVE), 'N') = 'N')
+
+            UNION ALL
+            SELECT EVENT_DATE, EVENT_USER, EVENT_SORT_ID, 'Attachments', 'Attachment updated',
+                   'Link updated: ' || NVL(OLD_DOCUMENT_LINK, 'Blank') || ' → ' || NVL(NEW_DOCUMENT_LINK, 'Blank')
+            FROM ATT_BASE_LOG
+            WHERE ACTION_TYPE = 'U'
+              AND NVL(TRIM(OLD_DOCUMENT_LINK), '#NULL#') <> NVL(TRIM(NEW_DOCUMENT_LINK), '#NULL#')
+              AND NVL(OLD_CASE_ID, -1) = NVL(NEW_CASE_ID, -1)
+              AND NVL(OLD_CASE_CLAIM_ID, -1) = NVL(NEW_CASE_CLAIM_ID, -1)
+              AND NOT (NVL(TRIM(OLD_IS_ACTIVE), 'N') = 'Y' AND NVL(TRIM(NEW_IS_ACTIVE), 'N') = 'N')
+
+            UNION ALL
+            SELECT EVENT_DATE, EVENT_USER, EVENT_SORT_ID, 'Attachments', 'Attachment updated',
+                   'Version updated: ' || NVL(OLD_DOCUMENT_VERSION, 'Blank') || ' → ' || NVL(NEW_DOCUMENT_VERSION, 'Blank')
+            FROM ATT_BASE_LOG
+            WHERE ACTION_TYPE = 'U'
+              AND NVL(TRIM(OLD_DOCUMENT_VERSION), '#NULL#') <> NVL(TRIM(NEW_DOCUMENT_VERSION), '#NULL#')
+              AND NVL(OLD_CASE_ID, -1) = NVL(NEW_CASE_ID, -1)
+              AND NVL(OLD_CASE_CLAIM_ID, -1) = NVL(NEW_CASE_CLAIM_ID, -1)
+              AND NOT (NVL(TRIM(OLD_IS_ACTIVE), 'N') = 'Y' AND NVL(TRIM(NEW_IS_ACTIVE), 'N') = 'N')
+
+            UNION ALL
+            SELECT EVENT_DATE, EVENT_USER, EVENT_SORT_ID, 'Attachments', 'Attachment updated',
+                   'Category updated: ' || NVL(OLD_DOCUMENT_CATEGORY, 'Blank') || ' → ' || NVL(NEW_DOCUMENT_CATEGORY, 'Blank')
+            FROM ATT_BASE_LOG
+            WHERE ACTION_TYPE = 'U'
+              AND NVL(TRIM(OLD_DOCUMENT_CATEGORY), '#NULL#') <> NVL(TRIM(NEW_DOCUMENT_CATEGORY), '#NULL#')
+              AND NVL(OLD_CASE_ID, -1) = NVL(NEW_CASE_ID, -1)
+              AND NVL(OLD_CASE_CLAIM_ID, -1) = NVL(NEW_CASE_CLAIM_ID, -1)
+              AND NOT (NVL(TRIM(OLD_IS_ACTIVE), 'N') = 'Y' AND NVL(TRIM(NEW_IS_ACTIVE), 'N') = 'N')
+
+            UNION ALL
+            SELECT EVENT_DATE, EVENT_USER, EVENT_SORT_ID, 'Attachments', 'Attachment updated',
+                   'Type updated: ' || NVL(OLD_DOCUMENT_TYPE, 'Blank') || ' → ' || NVL(NEW_DOCUMENT_TYPE, 'Blank')
+            FROM ATT_BASE_LOG
+            WHERE ACTION_TYPE = 'U'
+              AND NVL(TRIM(OLD_DOCUMENT_TYPE), '#NULL#') <> NVL(TRIM(NEW_DOCUMENT_TYPE), '#NULL#')
+              AND NVL(OLD_CASE_ID, -1) = NVL(NEW_CASE_ID, -1)
+              AND NVL(OLD_CASE_CLAIM_ID, -1) = NVL(NEW_CASE_CLAIM_ID, -1)
+              AND NOT (NVL(TRIM(OLD_IS_ACTIVE), 'N') = 'Y' AND NVL(TRIM(NEW_IS_ACTIVE), 'N') = 'N')
+
+            UNION ALL
+            SELECT EVENT_DATE, EVENT_USER, EVENT_SORT_ID, 'Attachments', 'Attachment updated',
+                   'Delivery Method updated: ' || NVL(OLD_DELIVERY_METHOD, 'Blank') || ' → ' || NVL(NEW_DELIVERY_METHOD, 'Blank')
+            FROM ATT_BASE_LOG
+            WHERE ACTION_TYPE = 'U'
+              AND NVL(TRIM(OLD_DELIVERY_METHOD), '#NULL#') <> NVL(TRIM(NEW_DELIVERY_METHOD), '#NULL#')
+              AND NVL(OLD_CASE_ID, -1) = NVL(NEW_CASE_ID, -1)
+              AND NVL(OLD_CASE_CLAIM_ID, -1) = NVL(NEW_CASE_CLAIM_ID, -1)
+              AND NOT (NVL(TRIM(OLD_IS_ACTIVE), 'N') = 'Y' AND NVL(TRIM(NEW_IS_ACTIVE), 'N') = 'N')
+        ),
+
+        /*==============================================================
+          COMBINE ALL EVENTS
+        ==============================================================*/
+        ALL_EVENTS AS
+        (
+            SELECT * FROM EMPLOYER_ADDED
+            UNION ALL
+            SELECT * FROM EMPLOYER_REMOVED
+            UNION ALL
+            SELECT * FROM EMPLOYER_UPDATED
+            UNION ALL
+            SELECT * FROM ATTACHMENT_ADDED
+            UNION ALL
+            SELECT * FROM ATTACHMENT_REMOVED
+            UNION ALL
+            SELECT * FROM ATTACHMENT_REASSIGNED
+            UNION ALL
+            SELECT * FROM ATTACHMENT_UPDATED
+        ),
+
+        /*==============================================================
+          REMOVE EXACT DUPLICATES
+        ==============================================================*/
+        DISTINCT_EVENTS AS
+        (
+            SELECT DISTINCT
+                EVENT_DATE,
+                CHANGE_MADE,
+                CONTAINER,
+                EVENT_USER AS USER_ID,
+                DETAILS,
+                EVENT_SORT_ID
+            FROM ALL_EVENTS
+        ),
+
+        /*==============================================================
+          RESOLVE USER NAME
+          - USER_ID is actual user id from log
+          - USER_NAME is display name if found, else user id
+        ==============================================================*/
+        EVENTS_WITH_USER AS
+        (
+            SELECT
+                E.EVENT_DATE,
+                E.CHANGE_MADE,
+                E.CONTAINER,
+                E.USER_ID,
+                COALESCE
+                (
+                    (
+                        SELECT AD.AUDITOR_NAME
+                        FROM EVOLVE.AUDITOR_DETAILS AD
+                        WHERE TO_CHAR(AD.AUDITOR_USER_ID) = TO_CHAR(E.USER_ID)
+                          AND ROWNUM = 1
+                    ),
+                    TO_CHAR(E.USER_ID),
+                    'SYSTEM'
+                ) AS USER_NAME,
+                E.DETAILS,
+                E.EVENT_SORT_ID
+            FROM DISTINCT_EVENTS E
+        ),
+
+        /*==============================================================
+          APPLY FILTERS BEFORE PAGINATION
+        ==============================================================*/
+        FILTERED_EVENTS AS
+        (
+            SELECT
+                E.EVENT_DATE,
+                E.CHANGE_MADE,
+                E.CONTAINER,
+                E.USER_NAME,
+                E.USER_ID,
+                E.DETAILS,
+                E.EVENT_SORT_ID
+            FROM EVENTS_WITH_USER E
+            CROSS JOIN PARAMS P
+            WHERE (P.FILTER_DATE IS NULL OR TRUNC(E.EVENT_DATE) = P.FILTER_DATE)
+              AND (P_FILTER_CONTAINER IS NULL OR UPPER(E.CONTAINER) = UPPER(TRIM(P_FILTER_CONTAINER)))
+              AND (
+                    P_FILTER_USER IS NULL
+                    OR UPPER(NVL(E.USER_NAME, 'SYSTEM')) = UPPER(TRIM(P_FILTER_USER))
+                    OR UPPER(NVL(TO_CHAR(E.USER_ID), 'SYSTEM')) = UPPER(TRIM(P_FILTER_USER))
+                  )
+        ),
+
+        /*==============================================================
+          ADD TOTAL RECORD COUNT AND ROW NUMBER
+        ==============================================================*/
+        PAGED_EVENTS AS
+        (
+            SELECT
+                EVENT_DATE,
+                CHANGE_MADE,
+                CONTAINER,
+                USER_NAME,
+                USER_ID,
+                DETAILS,
+                COUNT(*) OVER () AS TOTAL_RECORDS,
+                ROW_NUMBER() OVER
+                (
+                    ORDER BY EVENT_DATE DESC, EVENT_SORT_ID DESC, CHANGE_MADE, CONTAINER, USER_NAME, DETAILS
+                ) AS RN
+            FROM FILTERED_EVENTS
+        )
+
+        /*==============================================================
+          FINAL RESULT
+        ==============================================================*/
+        SELECT
+            TO_CHAR(EVENT_DATE, 'DD MON YYYY HH:MI AM') AS EVENT_DATE,
+            CHANGE_MADE,
+            CONTAINER,
+            USER_NAME,
+            USER_ID,
+            DETAILS,
+            TOTAL_RECORDS
+        FROM PAGED_EVENTS
+        WHERE RN BETWEEN (((NVL(P_PAGE_NUMBER, 1) - 1) * NVL(P_PAGE_SIZE, 7)) + 1)
+                    AND (NVL(P_PAGE_NUMBER, 1) * NVL(P_PAGE_SIZE, 7))
+        ORDER BY RN;
+
+END;
+/

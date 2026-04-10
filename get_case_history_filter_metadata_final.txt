@@ -1,0 +1,212 @@
+CREATE OR REPLACE PROCEDURE EVOLVE.GET_CASE_HISTORY_FILTER_METADATA
+(
+    P_CASE_ID        IN  EVOLVE.CASE_CLAIMS.CASE_ID%TYPE,
+    P_OUTPUT_CURSOR  OUT SYS_REFCURSOR
+)
+AS
+BEGIN
+    OPEN P_OUTPUT_CURSOR FOR
+        WITH
+        /* ============================================================
+           EMPLOYER HISTORY BASE
+           - Keep same pattern as reference SP.
+           - Build only rows that actually produce employer events.
+        ============================================================ */
+        EMP_BASE_LOG AS
+        (
+            SELECT
+                NVL(L.MODIFIED_DATE, L.CREATED_DATE) AS EVENT_DATE,
+                NVL(L.MODIFIED_BY,   L.CREATED_BY)   AS EVENT_USER,
+
+                TO_CHAR(L.EMPR_NAME)                   AS EMPR_NAME,
+                TO_CHAR(L.EMPR_INFO_CD)                AS EMPR_INFO_CD,
+                TO_CHAR(L.EMPR_TIN)                    AS EMPR_TIN,
+                TO_CHAR(L.GROUP_SIZE)                  AS GROUP_SIZE,
+                TO_CHAR(L.EMPR_ADDR1)                  AS EMPR_ADDR1,
+                TO_CHAR(L.EMPR_ADDR2)                  AS EMPR_ADDR2,
+                TO_CHAR(L.EMPR_CITY)                   AS EMPR_CITY,
+                TO_CHAR(L.EMPR_STATE)                  AS EMPR_STATE,
+                TO_CHAR(L.EMPR_ZIP)                    AS EMPR_ZIP,
+                TO_CHAR(L.EMPR_PHONE_NUMBER)           AS EMPR_PHONE_NUMBER,
+                TO_CHAR(L.EMPR_FAX)                    AS EMPR_FAX,
+                TO_CHAR(L.EMPR_EMAIL)                  AS EMPR_EMAIL,
+                TO_CHAR(L.EMPLOYER_PREFERRED_DELIVERY) AS EMPLOYER_PREFERRED_DELIVERY,
+
+                LAG(TO_CHAR(L.EMPR_NAME)) OVER
+                (
+                    PARTITION BY L.CASE_CLAIM_ID
+                    ORDER BY NVL(L.MODIFIED_DATE, L.CREATED_DATE), L.CASE_CLAIM_LOG_ID
+                ) AS PREV_EMPR_NAME,
+
+                LAG(TO_CHAR(L.EMPR_INFO_CD)) OVER
+                (
+                    PARTITION BY L.CASE_CLAIM_ID
+                    ORDER BY NVL(L.MODIFIED_DATE, L.CREATED_DATE), L.CASE_CLAIM_LOG_ID
+                ) AS PREV_EMPR_INFO_CD,
+
+                LAG(TO_CHAR(L.EMPR_TIN)) OVER
+                (
+                    PARTITION BY L.CASE_CLAIM_ID
+                    ORDER BY NVL(L.MODIFIED_DATE, L.CREATED_DATE), L.CASE_CLAIM_LOG_ID
+                ) AS PREV_EMPR_TIN,
+
+                LAG(TO_CHAR(L.GROUP_SIZE)) OVER
+                (
+                    PARTITION BY L.CASE_CLAIM_ID
+                    ORDER BY NVL(L.MODIFIED_DATE, L.CREATED_DATE), L.CASE_CLAIM_LOG_ID
+                ) AS PREV_GROUP_SIZE,
+
+                LAG(TO_CHAR(L.EMPR_ADDR1)) OVER
+                (
+                    PARTITION BY L.CASE_CLAIM_ID
+                    ORDER BY NVL(L.MODIFIED_DATE, L.CREATED_DATE), L.CASE_CLAIM_LOG_ID
+                ) AS PREV_EMPR_ADDR1,
+
+                LAG(TO_CHAR(L.EMPR_ADDR2)) OVER
+                (
+                    PARTITION BY L.CASE_CLAIM_ID
+                    ORDER BY NVL(L.MODIFIED_DATE, L.CREATED_DATE), L.CASE_CLAIM_LOG_ID
+                ) AS PREV_EMPR_ADDR2,
+
+                LAG(TO_CHAR(L.EMPR_CITY)) OVER
+                (
+                    PARTITION BY L.CASE_CLAIM_ID
+                    ORDER BY NVL(L.MODIFIED_DATE, L.CREATED_DATE), L.CASE_CLAIM_LOG_ID
+                ) AS PREV_EMPR_CITY,
+
+                LAG(TO_CHAR(L.EMPR_STATE)) OVER
+                (
+                    PARTITION BY L.CASE_CLAIM_ID
+                    ORDER BY NVL(L.MODIFIED_DATE, L.CREATED_DATE), L.CASE_CLAIM_LOG_ID
+                ) AS PREV_EMPR_STATE,
+
+                LAG(TO_CHAR(L.EMPR_ZIP)) OVER
+                (
+                    PARTITION BY L.CASE_CLAIM_ID
+                    ORDER BY NVL(L.MODIFIED_DATE, L.CREATED_DATE), L.CASE_CLAIM_LOG_ID
+                ) AS PREV_EMPR_ZIP,
+
+                LAG(TO_CHAR(L.EMPR_PHONE_NUMBER)) OVER
+                (
+                    PARTITION BY L.CASE_CLAIM_ID
+                    ORDER BY NVL(L.MODIFIED_DATE, L.CREATED_DATE), L.CASE_CLAIM_LOG_ID
+                ) AS PREV_EMPR_PHONE_NUMBER,
+
+                LAG(TO_CHAR(L.EMPR_FAX)) OVER
+                (
+                    PARTITION BY L.CASE_CLAIM_ID
+                    ORDER BY NVL(L.MODIFIED_DATE, L.CREATED_DATE), L.CASE_CLAIM_LOG_ID
+                ) AS PREV_EMPR_FAX,
+
+                LAG(TO_CHAR(L.EMPR_EMAIL)) OVER
+                (
+                    PARTITION BY L.CASE_CLAIM_ID
+                    ORDER BY NVL(L.MODIFIED_DATE, L.CREATED_DATE), L.CASE_CLAIM_LOG_ID
+                ) AS PREV_EMPR_EMAIL,
+
+                LAG(TO_CHAR(L.EMPLOYER_PREFERRED_DELIVERY)) OVER
+                (
+                    PARTITION BY L.CASE_CLAIM_ID
+                    ORDER BY NVL(L.MODIFIED_DATE, L.CREATED_DATE), L.CASE_CLAIM_LOG_ID
+                ) AS PREV_EMPLOYER_PREFERRED_DELIVERY
+            FROM EVOLVE.CASE_CLAIMS_LOG L
+            WHERE L.CASE_ID = P_CASE_ID
+        ),
+
+        EMPLOYER_HISTORY_EVENTS AS
+        (
+            SELECT EVENT_DATE, EVENT_USER
+            FROM EMP_BASE_LOG
+            WHERE
+                    /* Employer added / removed */
+                    (PREV_EMPR_NAME IS NULL     AND EMPR_NAME IS NOT NULL)
+                 OR (PREV_EMPR_NAME IS NOT NULL AND EMPR_NAME IS NULL)
+
+                 /* Any employer update */
+                 OR (NVL(PREV_EMPR_NAME, '#NULL#')                   <> NVL(EMPR_NAME, '#NULL#'))
+                 OR (NVL(PREV_EMPR_INFO_CD, '#NULL#')                <> NVL(EMPR_INFO_CD, '#NULL#'))
+                 OR (NVL(PREV_EMPR_TIN, '#NULL#')                    <> NVL(EMPR_TIN, '#NULL#'))
+                 OR (NVL(PREV_GROUP_SIZE, '#NULL#')                  <> NVL(GROUP_SIZE, '#NULL#'))
+                 OR (NVL(PREV_EMPR_ADDR1, '#NULL#')                  <> NVL(EMPR_ADDR1, '#NULL#'))
+                 OR (NVL(PREV_EMPR_ADDR2, '#NULL#')                  <> NVL(EMPR_ADDR2, '#NULL#'))
+                 OR (NVL(PREV_EMPR_CITY, '#NULL#')                   <> NVL(EMPR_CITY, '#NULL#'))
+                 OR (NVL(PREV_EMPR_STATE, '#NULL#')                  <> NVL(EMPR_STATE, '#NULL#'))
+                 OR (NVL(PREV_EMPR_ZIP, '#NULL#')                    <> NVL(EMPR_ZIP, '#NULL#'))
+                 OR (NVL(PREV_EMPR_PHONE_NUMBER, '#NULL#')           <> NVL(EMPR_PHONE_NUMBER, '#NULL#'))
+                 OR (NVL(PREV_EMPR_FAX, '#NULL#')                    <> NVL(EMPR_FAX, '#NULL#'))
+                 OR (NVL(PREV_EMPR_EMAIL, '#NULL#')                  <> NVL(EMPR_EMAIL, '#NULL#'))
+                 OR (NVL(PREV_EMPLOYER_PREFERRED_DELIVERY, '#NULL#') <> NVL(EMPLOYER_PREFERRED_DELIVERY, '#NULL#'))
+        ),
+
+        /* ============================================================
+           ATTACHMENT HISTORY BASE
+           - Read only attachment log rows for this case.
+           - Use same data source as main case history SP.
+        ============================================================ */
+        ATTACHMENT_HISTORY_EVENTS AS
+        (
+            SELECT DISTINCT
+                L.ACTION_DATE AS EVENT_DATE,
+                L.ACTION_BY   AS EVENT_USER
+            FROM EVOLVE.CASE_DOCUMENTS_LOG L
+            WHERE NVL(L.OLD_CASE_ID, -1) = P_CASE_ID
+               OR NVL(L.NEW_CASE_ID, -1) = P_CASE_ID
+        ),
+
+        ALL_HISTORY_EVENTS AS
+        (
+            SELECT EVENT_DATE, EVENT_USER, 'Employer' AS CONTAINER
+            FROM EMPLOYER_HISTORY_EVENTS
+
+            UNION ALL
+
+            SELECT EVENT_DATE, EVENT_USER, 'Attachments' AS CONTAINER
+            FROM ATTACHMENT_HISTORY_EVENTS
+        )
+
+        /* ============================================================
+           FINAL FILTER DATA
+           - Event_Date: only exact dates present in history
+           - Container : only containers present in history data
+           - User_Name : only users present in history data
+        ============================================================ */
+        SELECT
+            'Event_Date' AS FILTER_TYPE,
+            TO_CHAR(TRUNC(EVENT_DATE), 'YYYY-MM-DD') AS FILTER_VALUE
+        FROM ALL_HISTORY_EVENTS
+        WHERE EVENT_DATE IS NOT NULL
+        GROUP BY TRUNC(EVENT_DATE)
+
+        UNION ALL
+
+        SELECT
+            'Container' AS FILTER_TYPE,
+            CONTAINER   AS FILTER_VALUE
+        FROM
+        (
+            SELECT DISTINCT CONTAINER
+            FROM ALL_HISTORY_EVENTS
+            WHERE CONTAINER IS NOT NULL
+        )
+
+        UNION ALL
+
+        SELECT DISTINCT
+            'User_Name' AS FILTER_TYPE,
+            COALESCE
+            (
+                TO_CHAR(AD.AUDITOR_NAME),
+                TO_CHAR(U.EVENT_USER),
+                'SYSTEM'
+            ) AS FILTER_VALUE
+        FROM
+        (
+            SELECT DISTINCT EVENT_USER
+            FROM ALL_HISTORY_EVENTS
+        ) U
+        LEFT JOIN EVOLVE.AUDITOR_DETAILS AD
+               ON TO_CHAR(AD.AUDITOR_USER_ID) = TO_CHAR(U.EVENT_USER)
+        WHERE COALESCE(TO_CHAR(AD.AUDITOR_NAME), TO_CHAR(U.EVENT_USER), 'SYSTEM') IS NOT NULL;
+
+END;
+/
