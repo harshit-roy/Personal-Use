@@ -1,0 +1,148 @@
+CREATE OR REPLACE PROCEDURE EVOLVE.SP_GET_CASE_NOTES_HISTORY_BY_CASE_ID
+(
+    P_CASE_ID IN NUMBER,
+    P_RC      OUT SYS_REFCURSOR
+)
+AS
+BEGIN
+    /*
+      MERGED NOTES HISTORY SP TEMPLATE
+
+      - Uses CASE_ID only
+      - Covers Notes / Claims / Employer / PBM-OI notes
+      - Covers Add / Update / Delete
+      - Note type ids should be derived from lookup query, not hardcoded
+      - Replace table names / lookup key names with exact existing schema objects if needed
+    */
+
+    OPEN P_RC FOR
+        WITH NOTE_TYPE_MAP AS
+        (
+            SELECT DISTINCT
+                   LV.LOOKUP_KEY_VALUE_ID AS NOTES_TYPE_ID,
+                   UPPER(TRIM(LV.KEY_VALUE)) AS NOTES_TYPE_NAME
+              FROM EVOLVE.LOOKUP_VALUES LV
+              JOIN EVOLVE.LOOKUP_KEYS LK
+                ON LK.LOOKUP_KEY_ID = LV.LOOKUP_KEY_ID
+             WHERE LK.LOOKUP_KEY_NAME IN ('NOTES_TYPE','NOTE_TYPE','CASE_NOTES_TYPE')
+               AND NVL(LV.IS_ACTIVE, 'Y') = 'Y'
+               AND UPPER(TRIM(LV.KEY_VALUE)) IN
+                   ('CLAIMS','EMPLOYER','PBM/OI','PBM','OI','NOTES','CASE NOTES','NOTES CONTAINER')
+        ),
+        NOTES_LOG AS
+        (
+            SELECT
+                L.CASE_ID,
+                L.NOTE_ID,
+                L.NOTES_TYPE_ID,
+                TO_CHAR(L.ACTION_TYPE)      AS ACTION_TYPE,
+                TO_CHAR(L.CREATED_BY)       AS CREATED_BY,
+                CAST(L.CREATED_DATE AS DATE) AS CREATED_DATE,
+                TO_CHAR(L.MODIFIED_BY)      AS MODIFIED_BY,
+                CAST(L.MODIFIED_DATE AS DATE) AS MODIFIED_DATE,
+                TO_CHAR(L.NOTE_TEXT)        AS NOTE_TEXT,
+                TO_CHAR(L.OLD_NOTE_TEXT)    AS OLD_NOTE_TEXT,
+                TO_CHAR(L.CHECK_NUMBER)     AS CHECK_NUMBER,
+                TO_CHAR(L.SOURCE_SYSTEM)    AS SOURCE_SYSTEM,
+                CAST(L.LOG_DATE AS DATE)    AS LOG_DATE
+            FROM EVOLVE.CASE_NOTES_LOG L
+            WHERE L.CASE_ID = P_CASE_ID
+        ),
+        NOTE_ADDED AS
+        (
+            SELECT
+                L.LOG_DATE AS EVENT_DATE,
+                'NOTE ADDED' AS CHANGE_MADE,
+                CASE
+                    WHEN M.NOTES_TYPE_NAME IN ('CASE NOTES','NOTES CONTAINER','NOTES') THEN 'Notes'
+                    WHEN M.NOTES_TYPE_NAME = 'CLAIMS' THEN 'Claims Notes'
+                    WHEN M.NOTES_TYPE_NAME = 'EMPLOYER' THEN 'Employer Notes'
+                    WHEN M.NOTES_TYPE_NAME IN ('PBM/OI','PBM','OI') THEN 'PBM/OI Notes'
+                    ELSE NVL(M.NOTES_TYPE_NAME, 'Notes')
+                END AS SECTION_NAME,
+                TO_CHAR(L.NOTE_ID) AS ENTITY_ID,
+                CAST(NULL AS VARCHAR2(4000)) AS OLD_VALUE,
+                CAST(L.NOTE_TEXT AS VARCHAR2(4000)) AS NEW_VALUE,
+                TO_CHAR(NVL(L.MODIFIED_BY, L.CREATED_BY)) AS CHANGED_BY,
+                NVL(L.MODIFIED_DATE, L.CREATED_DATE) AS CHANGED_DATE,
+                TO_CHAR(L.CHECK_NUMBER) AS CHECK_NUMBER,
+                TO_CHAR(L.SOURCE_SYSTEM) AS SOURCE_SYSTEM
+            FROM NOTES_LOG L
+            LEFT JOIN NOTE_TYPE_MAP M
+              ON M.NOTES_TYPE_ID = L.NOTES_TYPE_ID
+            WHERE UPPER(TRIM(L.ACTION_TYPE)) IN ('ADD','ADDED','INSERT','INSERTED')
+              AND NVL(TRIM(L.NOTE_TEXT), '~') <> '~'
+        ),
+        NOTE_UPDATED AS
+        (
+            SELECT
+                L.LOG_DATE AS EVENT_DATE,
+                'NOTE UPDATED' AS CHANGE_MADE,
+                CASE
+                    WHEN M.NOTES_TYPE_NAME IN ('CASE NOTES','NOTES CONTAINER','NOTES') THEN 'Notes'
+                    WHEN M.NOTES_TYPE_NAME = 'CLAIMS' THEN 'Claims Notes'
+                    WHEN M.NOTES_TYPE_NAME = 'EMPLOYER' THEN 'Employer Notes'
+                    WHEN M.NOTES_TYPE_NAME IN ('PBM/OI','PBM','OI') THEN 'PBM/OI Notes'
+                    ELSE NVL(M.NOTES_TYPE_NAME, 'Notes')
+                END AS SECTION_NAME,
+                TO_CHAR(L.NOTE_ID) AS ENTITY_ID,
+                CAST(L.OLD_NOTE_TEXT AS VARCHAR2(4000)) AS OLD_VALUE,
+                CAST(L.NOTE_TEXT AS VARCHAR2(4000)) AS NEW_VALUE,
+                TO_CHAR(NVL(L.MODIFIED_BY, L.CREATED_BY)) AS CHANGED_BY,
+                NVL(L.MODIFIED_DATE, L.CREATED_DATE) AS CHANGED_DATE,
+                TO_CHAR(L.CHECK_NUMBER) AS CHECK_NUMBER,
+                TO_CHAR(L.SOURCE_SYSTEM) AS SOURCE_SYSTEM
+            FROM NOTES_LOG L
+            LEFT JOIN NOTE_TYPE_MAP M
+              ON M.NOTES_TYPE_ID = L.NOTES_TYPE_ID
+            WHERE UPPER(TRIM(L.ACTION_TYPE)) IN ('UPDATE','UPDATED')
+              AND NVL(TRIM(L.OLD_NOTE_TEXT), '~') <> NVL(TRIM(L.NOTE_TEXT), '~')
+              AND NOT (NVL(TRIM(L.OLD_NOTE_TEXT), '~') = '~' AND NVL(TRIM(L.NOTE_TEXT), '~') = '~')
+        ),
+        NOTE_DELETED AS
+        (
+            SELECT
+                L.LOG_DATE AS EVENT_DATE,
+                'NOTE DELETED' AS CHANGE_MADE,
+                CASE
+                    WHEN M.NOTES_TYPE_NAME IN ('CASE NOTES','NOTES CONTAINER','NOTES') THEN 'Notes'
+                    WHEN M.NOTES_TYPE_NAME = 'CLAIMS' THEN 'Claims Notes'
+                    WHEN M.NOTES_TYPE_NAME = 'EMPLOYER' THEN 'Employer Notes'
+                    WHEN M.NOTES_TYPE_NAME IN ('PBM/OI','PBM','OI') THEN 'PBM/OI Notes'
+                    ELSE NVL(M.NOTES_TYPE_NAME, 'Notes')
+                END AS SECTION_NAME,
+                TO_CHAR(L.NOTE_ID) AS ENTITY_ID,
+                CAST(L.OLD_NOTE_TEXT AS VARCHAR2(4000)) AS OLD_VALUE,
+                CAST(NULL AS VARCHAR2(4000)) AS NEW_VALUE,
+                TO_CHAR(NVL(L.MODIFIED_BY, L.CREATED_BY)) AS CHANGED_BY,
+                NVL(L.MODIFIED_DATE, L.CREATED_DATE) AS CHANGED_DATE,
+                TO_CHAR(L.CHECK_NUMBER) AS CHECK_NUMBER,
+                TO_CHAR(L.SOURCE_SYSTEM) AS SOURCE_SYSTEM
+            FROM NOTES_LOG L
+            LEFT JOIN NOTE_TYPE_MAP M
+              ON M.NOTES_TYPE_ID = L.NOTES_TYPE_ID
+            WHERE UPPER(TRIM(L.ACTION_TYPE)) IN ('DELETE','DELETED','REMOVE','REMOVED')
+        ),
+        ALL_EVENTS AS
+        (
+            SELECT * FROM NOTE_ADDED
+            UNION ALL
+            SELECT * FROM NOTE_UPDATED
+            UNION ALL
+            SELECT * FROM NOTE_DELETED
+        )
+        SELECT DISTINCT
+            EVENT_DATE,
+            CHANGE_MADE,
+            SECTION_NAME,
+            ENTITY_ID,
+            OLD_VALUE,
+            NEW_VALUE,
+            CHANGED_BY,
+            CHANGED_DATE,
+            CHECK_NUMBER,
+            SOURCE_SYSTEM
+        FROM ALL_EVENTS
+        ORDER BY EVENT_DATE DESC, CHANGED_DATE DESC, SECTION_NAME, ENTITY_ID;
+END SP_GET_CASE_NOTES_HISTORY_BY_CASE_ID;
+/
