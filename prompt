@@ -1,0 +1,84 @@
+# TASK: Implement End-to-End Databricks Pipeline and PostgreSQL Stored Procedure for FWA Sandbox Case Creation
+
+## 1. Context & Objectives
+We need to implement a new data ingestion and case creation workflow for the **FWA Sandbox Process** (User Story `9394548`). 
+The solution involves:
+1. Inspecting existing Databricks pipelines and PostgreSQL case creation logic/procedures.
+2. Developing a dedicated Databricks pipeline to ingest data from an Oracle/external sandbox table into a PostgreSQL staging table.
+3. Executing a dedicated PostgreSQL stored procedure to validate entities, map columns, and create cases atomically.
+4. Handling failures with an "all-or-nothing" transaction model: if a single record fails validation/creation, no cases should be committed.
+5. Generating an Excel audit report containing all processed records (with an added `Issue` column indicating errors if any), uploading it to Azure Blob Storage, and creating an entry for the Data Import / Import History screen.
+6. Performing mandatory cleanup: deleting records from the sandbox table via `DELETE` (no `TRUNCATE`), and managing staging lifecycle.
+
+---
+
+## 2. Source Table & Environment Details
+* **Sandbox Table (Dev/Test):** `DATAOPAU_SANDBOX.EVOLVE_FWA_CASE_CREATION_TEST` (or prod equivalent `DATAOPAU_SANDBOX.EVOLVE_FWA_CASE_CREATION`)
+* **Role / Privileges:** `PCAR_EVOLVE_DLY_RPT` has `GRANT SELECT, INSERT, UPDATE, DELETE` permissions.
+  * **CRITICAL:** Do NOT use `TRUNCATE` on the sandbox table (privilege not granted). Use `DELETE FROM <sandbox_table>`.
+* **Sandbox Columns:**
+  * `WORKFLOW` (VARCHAR / NVARCHAR2)
+  * `CATEGORY` (VARCHAR / NVARCHAR2)
+  * `CASE_TYPE` (VARCHAR / NVARCHAR2)
+  * `ENTITY_ID` (VARCHAR / NVARCHAR2)
+  * `ENTITY_ID_TYPE` (VARCHAR / NVARCHAR2) (e.g., `NCPDP`, `PRESCRIBER_NPI`, `MBR_PERS_GEN_KEY`)
+  * `USER_ASSIGNED` (VARCHAR / NVARCHAR2)
+  * `REFERRAL_SOURCE` (VARCHAR / NVARCHAR2)
+  * `ALLEGATION_TYPE` (VARCHAR / NVARCHAR2)
+  * `CASE_STATUS` (VARCHAR / NVARCHAR2)
+
+---
+
+## 3. Scope of Analysis Required (Step-by-Step)
+Before writing new code, analyze our codebase and database schema:
+1. **Analyze Existing Pipelines:** Check existing Databricks notebooks/pipelines in the repository to replicate established conventions (connection pooling, Azure Blob upload mechanisms, logging, and Data Import screen table schemas).
+2. **Analyze Case Creation Logic:** Inspect existing PostgreSQL stored procedures / functions handling "create case" (including entity resolution, case number generation, and audit logging).
+3. **Analyze Existing Entity & Master Tables:**
+   * Evaluate how `ENTITY_ID` is validated against master tables based on `ENTITY_ID_TYPE` (e.g., Pharmacy by NCPDP, Prescriber by NPI, Member by Member Person Gen Key).
+   * Review UDT (User Defined Types) / temp tables used in current workflows. Prefer using existing core tables or a dedicated permanent staging table rather than complex temporary UDTs.
+
+---
+
+## 4. Architectural & Implementation Requirements
+
+### A. PostgreSQL Staging Table & Stored Procedure
+1. **Staging Table:**
+   * Define DDL for a dedicated staging table (e.g., `stg_fwa_sandbox_case_creation`) matching sandbox fields plus metadata (`batch_id`, `created_at`, `status`, `error_message`).
+2. **Lifecycle & Cleanup of Staging:**
+   * The pipeline must check if records exist in the Sandbox table first.
+   * If new records exist in the Sandbox: delete previous records from the staging table using `DELETE FROM <staging_table>;` (do NOT use `TRUNCATE`) prior to loading new records.
+   * If no records exist in the Sandbox: do NOT delete or touch the staging table; exit cleanly.
+3. **Stored Procedure (`sp_process_fwa_sandbox_cases`):**
+   * Encapsulate case validation and creation inside a transaction (`BEGIN ... COMMIT / ROLLBACK`).
+   * **Atomic / Fail-All Rule:** If even one record in the batch fails entity resolution (e.g., `ENTITY_ID` not found for the given `ENTITY_ID_TYPE`) or validation, **rollback all case insertions**.
+   * Output or populate an execution summary/error table identifying which record(s) failed and the specific reason (e.g., "Entity ID 123456 of type NCPDP not found in master database").
+
+### B. Databricks Pipeline Execution Flow
+1. **Connect & Check:** Connect to the sandbox table. If record count is 0, log status and terminate pipeline run.
+2. **Stage Data:**
+   * Execute `DELETE` on the PostgreSQL staging table.
+   * Ingest and batch insert all sandbox records into the PostgreSQL staging table.
+3. **Execute Logic:** Trigger the dedicated PostgreSQL stored procedure to validate and create cases.
+4. **Excel Report & Azure Blob Upload:**
+   * Export all processed records into an Excel file (`.xlsx`).
+   * Include all original sandbox columns and append an `Issue` / `Error_Details` column at the end (populated with the error description for failed records, or blank/Success for valid ones).
+   * Upload the Excel file to the designated Azure Blob Storage container.
+5. **Data Import Screen Sync:**
+   * Insert a tracking record into the application's Data Import / Job History table (replicating existing pipeline patterns).
+   * Include the Blob URL link, total record count, status (`SUCCESS` / `FAILED`), timestamp, and execution metrics so it displays correctly on the UI.
+6. **Sandbox Table Cleanup:**
+   * Regardless of whether the batch succeeded or failed, delete all processed records from the Sandbox table using:
+     `DELETE FROM DATAOPAU_SANDBOX.EVOLVE_FWA_CASE_CREATION;` (or test table in lower environments).
+   * Verify records are purged so duplicate processing does not occur.
+
+---
+
+## 5. Expected Output
+Provide:
+1. **Analysis & Mapping Findings:** Explanation of existing case creation procedures and table mappings identified in the repo.
+2. **Database DDL & Procedure:**
+   * SQL DDL for the new staging table.
+   * Complete PostgreSQL stored procedure code implementing atomic validation, error tracking, and case creation.
+3. **Databricks Notebook / Python Code:**
+   * Full PySpark/Python Databricks pipeline implementing the staging, execution, Excel generation, Blob upload, Data Import record logging, and sandbox cleanup.
+4. **Execution Steps & Testing Strategy:** Instructions to test with sample records (both 100% valid batch and batches containing invalid entity IDs).
